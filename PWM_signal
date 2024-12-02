@@ -1,0 +1,51 @@
+// Define pins for PWM output
+const int positivePin = 9; // Pin for positive PWM
+const int negativePin = 10; // Pin for negative PWM
+
+// Time step in milliseconds
+const int timeStep = 2000; // 1 second for each PWM signal
+
+// Example array of values
+int pwmValues[] = {-1,1, -4, 4};
+const int numValues = sizeof(pwmValues) / sizeof(pwmValues[0]);
+
+// Function to find the maximum absolute value in the array
+int findMaxAbsValue(int* values, int size) {
+  int maxAbsValue = 0;
+  for (int i = 0; i < size; i++) {
+    if (abs(values[i]) > maxAbsValue) {
+      maxAbsValue = abs(values[i]);
+    }
+  }
+  return maxAbsValue;
+}
+
+void setup() {
+  // Set the pins as outputs
+  pinMode(positivePin, OUTPUT);
+  pinMode(negativePin, OUTPUT);
+}
+
+void loop() {
+  // Find the maximum absolute value in the array for scaling
+  int maxAbsValue = findMaxAbsValue(pwmValues, numValues);
+
+  // Loop through each element in the array
+  for (int i = 0; i < numValues; i++) {
+    // Scale the value to the range [0, 255]
+    int pwmSignal = map(abs(pwmValues[i]), 0, maxAbsValue, 0, 255);
+
+    if (pwmValues[i] >= 0) {
+      // Output to positive pin for positive values
+      analogWrite(positivePin, pwmSignal);
+      analogWrite(negativePin, 0); // Ensure the negative pin is off
+    } else {
+      // Output to negative pin for negative values
+      analogWrite(negativePin, pwmSignal);
+      analogWrite(positivePin, 0); // Ensure the positive pin is off
+    }
+
+    // Wait for the specified time step
+    delay(timeStep);
+  }
+}
