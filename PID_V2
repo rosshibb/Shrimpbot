@@ -3,11 +3,15 @@
 #include "AS5600.h"
 #include <Wire.h>
 
+
 AS5600 as5600;
 
 // Pins for H-bridge control
-const int positivePin = 9;  // PWM pin for forward direction
+const int positivePin = 11;  // PWM pin for forward direction
 const int negativePin = 10; // PWM pin for reverse direction
+
+int pwmPrescribe = 0;
+
 
 // PID control variables
 double setpoint = 0;         // Target position (relative to zero-point)
@@ -17,19 +21,24 @@ double output = 0;           // PID output for speed and direction
 ///////////////////////////
 // PID tuning parameters //
 ///////////////////////////
-double Kp = 2.0, Ki = 5.0, Kd = 1.0;
+double Kp = 2.0, Ki = .50, Kd = 0.0;
+
+
+double t = 0.0;
+
+double desiredAngle = 0;
 
 // Initialize the PID controller
-PID myPID(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
+PID myPID(&input, &output, &desiredAngle, Kp, Ki, Kd, DIRECT);
 
 ///////////////////////////////////////////
 // Desired angle relative to zero-point ///
 ///////////////////////////////////////////
-double desiredAngle = 0; // Change this to set your desired angle
+ // Change this to set your desired angle
 
 // Timing constants for AS5600 averaging
-const int readInterval = 10;                           // Time between readings (ms)
-const int averageInterval = 100;                       // Time to calculate average (ms)
+const int readInterval = 1;                           // Time between readings (ms)
+const int averageInterval = 30;                       // Time to calculate average (ms)
 const int numSamples = averageInterval / readInterval; // Number of samples in each averaging period
 
 // Variables for calibration and averaging
@@ -73,9 +82,9 @@ void calibrate()
 }
 
 // Function to set the motor output
-void setMotorOutput(double pwmValue)
+void setMotorOutput(double pwmValue, int prescribedOutput)
 {
-  int pwmSignal = constrain(abs(pwmValue), 0, 255); // Ensure PWM is within range
+  int pwmSignal = constrain(abs(pwmValue), 100, 255); // Ensure PWM is within range
 
   if (pwmValue > 0)
   {
@@ -123,10 +132,22 @@ void setup()
   myPID.SetMode(AUTOMATIC);
   myPID.SetOutputLimits(-255, 255); // Full range of PWM and direction
   myPID.SetSampleTime(10);         // Sampling time in milliseconds
+  double maxAbsValue = findMaxAbsValue(pwmValues, numValues);
+
+    // Loop through each element in the array
+  for (int i = 0; i < numValues; i++) {
+    // Scale the value to the range [0, 255]
+    double pwmSignal = map(abs(pwmValues[i]), 0, maxAbsValue, 100, 255);
+  }
 }
 
 void loop()
 {
+  i += 1;
+  // t +=.05;
+  t = i/100;
+  // if 
+  desiredAngle = 40*cos(t);
   unsigned long currentTime = millis();
 
   // Read AS5600 data every 10 milliseconds
@@ -140,10 +161,23 @@ void loop()
 
     // Adjust angle based on calibration zero-point
     float adjustedAngle = angleDegrees - zeroAngle;
-
+    if (adjustedAngle < -180)
+    {
+      adjustedAngle = -1*(adjustedAngle + 180);
+    }
+   
     // Accumulate adjusted angle for averaging
-    angleSum += adjustedAngle;
-    sampleCount++;
+   // if(adjustedAngle < -100 || adjustedAngle > 100)
+   // {
+   //   angleSum +=0;
+   // }  
+    //else
+   // {
+     angleSum += adjustedAngle;
+     sampleCount++;
+  //  }
+    
+   
   }
 
   // Calculate and report average every 100 milliseconds
@@ -155,19 +189,21 @@ void loop()
     float averageAngle = (sampleCount > 0) ? (float(angleSum) / sampleCount) : 0;
 
     // Use the average angle as the PID input
-    input = averageAngle;
+   input = averageAngle;
 
     // Compute the PID output
     myPID.Compute();
 
+    pwmPrescribe = pwmValues[i];
+
     // Apply the PID output to the motor using PWM
-    setMotorOutput(output);
+    setMotorOutput(output, );
 
     // Print the angle and PID output for debugging
     Serial.print("Average Adjusted Angle: ");
     Serial.print(averageAngle);
     Serial.print(" | Desired Angle: ");
-    Serial.print(setpoint);
+    Serial.print(desiredAngle);
     Serial.print(" | PID Output: ");
     Serial.println(output);
 
