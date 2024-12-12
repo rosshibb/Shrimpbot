@@ -6,6 +6,19 @@
 
 AS5600 as5600;
 
+// total cycle time (to run through full array of PWM values - leg down and back) 
+const int cycleTime = 750; // in milliseconds
+
+
+int thetaValues[] = {-40,-40,-40,-40,-40,-40,-40,-40,-40,-40,-40,-40,-40,-40,-40,-39,-39,-39,-39,-39,-39,-39,-39,-39,-38,-38,-38,-38,-38,-38,-37,-37,-37,-37,-36,-36,-36,-35,-35,-35,-34,-34,-34,-33,-33,-32,-32,-31,-31,-30,-30,-29,-29,-28,-27,-27,-26,-25,-25,-24,-23,-22,-22,-21,-20,-19,-18,-17,-16,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-4,-3,-2,-1,-0,1,2,3,4,5,7,8,9,10,11,12,13,14,15,16,17,19,20,21,22,23,24,24,25,26,27,28,29,30,31,31,32,33,33,34,35,35,36,36,37,37,38,38,38,39,39,39,40,40,40,40,40,40,40,40,40,40,40,39,39,39,38,38,38,37,37,36,36,35,35,34,33,33,32,31,30,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,6,5,4,3,2,1,-0,-1,-2,-3,-5,-6,-7,-8,-9,-10,-11,-12,-13,-14,-15,-16,-17,-17,-18,-19,-20,-21,-22,-22,-23,-24,-25,-25,-26,-27,-27,-28,-29,-29,-30,-30,-31,-31,-32,-32,-33,-33,-34,-34,-34,-35,-35,-35,-36,-36,-36,-37,-37,-37,-37,-38,-38,-38,-38,-38};
+int pwmValues[] = {0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,2,2,2,2,3,3,4,4,5,5,6,7,7,8,9,10,11,12,14,15,16,18,19,21,22,24,26,28,30,32,35,37,39,42,44,47,49,52,54,57,60,63,65,68,71,74,77,79,82,85,87,90,92,95,97,100,102,104,106,108,109,111,113,114,115,116,117,118,118,119,119,119,119,118,118,117,116,115,114,112,110,108,106,104,101,99,96,93,89,86,83,79,75,71,67,63,59,55,51,47,42,38,34,30,27,23,20,16,13,11,8,6,4,3,2,1,0,-0,-0,-0,-2,-2,-4,-6,-8,-10,-14,-16,-20,-24,-28,-34,-38,-44,-50,-56,-62,-68,-76,-84,-90,-100,-108,-116,-126,-136,-146,-156,-166,-176,-188,-198,-210,-222,-234,-246,-258,-270,-282,-294,-306,-318,-330,-342,-354,-366,-378,-388,-400,-410,-420,-430,-440,-448,-458,-466,-472,-480,-486,-492,-496,-500,-504,-506,-508,-510,-510,-510,-508,-506,-502,-498,-492,-486,-478,-470,-460,-450,-440,-428,-414,-400,-386,-370,-354,-338,-320,-302,-284,-264,-246,-226,-206,-188,-168,-150,-132,-114,-98,-82,-68,-54,-42,-32,-22,-14,-8,-4,-0,0};
+
+const int arraySize = sizeof(thetaValues)/sizeof(thetaValues[0]);
+
+// Time step in milliseconds
+const double timeStep = cycleTime/arraySize; // 1 second for each PWM signal //(previously 2.5 ms)
+
+
 // Pins for H-bridge control
 const int positivePin = 11;  // PWM pin for forward direction
 const int negativePin = 10; // PWM pin for reverse direction
@@ -21,7 +34,7 @@ double output = 0;           // PID output for speed and direction
 ///////////////////////////
 // PID tuning parameters //
 ///////////////////////////
-double Kp = 2.0, Ki = .50, Kd = 0.0;
+double Kp = 1.0, Ki = .50, Kd = 0.0;
 
 
 double t = 0.0;
@@ -38,8 +51,8 @@ PID myPID(&input, &output, &desiredAngle, Kp, Ki, Kd, DIRECT);
 
 // Timing constants for AS5600 averaging
 const int readInterval = 1;                           // Time between readings (ms)
-const int averageInterval = 30;                       // Time to calculate average (ms)
-const int numSamples = averageInterval / readInterval; // Number of samples in each averaging period
+const double averageInterval = timeStep;                      // Time to calculate average (ms)
+const double numSamples = averageInterval / readInterval; // Number of samples in each averaging period
 
 // Variables for calibration and averaging
 unsigned long lastReadTime = 0;
@@ -48,6 +61,17 @@ int angleSum = 0;
 int sampleCount = 0;
 int calAngle1 = 0, calAngle2 = 0; // Calibration points
 float zeroAngle = 0;              // New zero-point in degrees
+
+// Function to find the maximum absolute value in the array
+int findMaxAbsValue(int* values, int size) {
+  int maxAbsValue = 0;
+  for (int i = 0; i < size; i++) {
+    if (abs(values[i]) > maxAbsValue) {
+      maxAbsValue = abs(values[i]);
+    }
+  }
+  return maxAbsValue;
+}
 
 // Function to calibrate the encoder based on two known angles
 void calibrate()
@@ -84,7 +108,7 @@ void calibrate()
 // Function to set the motor output
 void setMotorOutput(double pwmValue, int prescribedOutput)
 {
-  int pwmSignal = constrain(abs(pwmValue), 100, 255); // Ensure PWM is within range
+  int pwmSignal = constrain(abs(pwmValue + prescribedOutput), 100, 255); // Ensure PWM is within range
 
   if (pwmValue > 0)
   {
@@ -132,22 +156,22 @@ void setup()
   myPID.SetMode(AUTOMATIC);
   myPID.SetOutputLimits(-255, 255); // Full range of PWM and direction
   myPID.SetSampleTime(10);         // Sampling time in milliseconds
-  double maxAbsValue = findMaxAbsValue(pwmValues, numValues);
+  
+
+  double maxAbsValue = findMaxAbsValue(pwmValues, arraySize);
 
     // Loop through each element in the array
-  for (int i = 0; i < numValues; i++) {
-    // Scale the value to the range [0, 255]
+  for (int i = 0; i < arraySize; i++) {
+    // Scale the value to the range [100, 255]
     double pwmSignal = map(abs(pwmValues[i]), 0, maxAbsValue, 100, 255);
   }
 }
 
 void loop()
 {
-  i += 1;
-  // t +=.05;
-  t = i/100;
-  // if 
-  desiredAngle = 40*cos(t);
+  for (int i = 0; i < arraySize; i++){
+  
+  desiredAngle = thetaValues[i];
   unsigned long currentTime = millis();
 
   // Read AS5600 data every 10 milliseconds
@@ -197,7 +221,7 @@ void loop()
     pwmPrescribe = pwmValues[i];
 
     // Apply the PID output to the motor using PWM
-    setMotorOutput(output, );
+    setMotorOutput(output, pwmPrescribe);
 
     // Print the angle and PID output for debugging
     Serial.print("Average Adjusted Angle: ");
@@ -206,9 +230,13 @@ void loop()
     Serial.print(desiredAngle);
     Serial.print(" | PID Output: ");
     Serial.println(output);
-
+    //Serial.print("  | i: ");
+    //Serial.print(i);
+    //Serial.print("  | Array Size: ");
+    //Serial.println(arraySize);
     // Reset sum and sample count for the next interval
     angleSum = 0;
     sampleCount = 0;
+  }
   }
 }
